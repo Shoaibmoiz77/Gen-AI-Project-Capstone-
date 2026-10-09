@@ -114,3 +114,36 @@ def test_unknown_model_lists_alternatives():
     llm = OpenAICompatLLM("https://x.test/v1", "old", client=http)
     with pytest.raises(RuntimeError, match="a-model, b-model"):
         llm.call_tool("s", "u", ANSWER_TOOL)
+
+
+def test_malformed_tool_output_is_resampled():
+    bad = (400, {"error": {"code": "output_parse_failed"}}, {})
+    http = FakeHTTP([bad, bad, _ok({"answerable": False, "sentences": []})])
+    llm = OpenAICompatLLM("https://x.test/v1", "m", client=http)
+    llm.call_tool("s", "u", ANSWER_TOOL)
+    assert len(http.requests) == 3
+
+
+def test_eval_survives_generation_errors(pipeline, tmp_path):
+    from pathlib import Path
+
+    from groundwork.evals import run_eval
+
+    class Flaky:
+        name = "flaky"
+
+        def __init__(self):
+            self.inner, self.n = llm_mod.FakeLLM(), 0
+
+        def call_tool(self, system, user, tool):
+            self.n += 1
+            if self.n % 5 == 0:
+                raise RuntimeError("boom")
+            return self.inner.call_tool(system, user, tool)
+
+    pipeline.llm = Flaky()
+    golden = Path(__file__).resolve().parents[1] / "data" / "eval" / "golden.jsonl"
+    s = run_eval(pipeline, golden, tmp_path, judge=None, workers=1)["summary"]
+    assert s["n_errors"] > 0
+    assert s["retrieval"]["recall@6"] >= 0.9  # retrieval still scored for every case
+    assert "## Errors" in (tmp_path / "report.md").read_text()

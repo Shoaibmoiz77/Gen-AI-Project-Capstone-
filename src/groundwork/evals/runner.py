@@ -100,35 +100,78 @@ def _run_case(pipeline: RAGPipeline, judge: LLM | None, case: EvalCase) -> dict:
     }
 
     if judge is not None and case.answerable and res.answer.answerable:
-        g = grade_answer(
+        try:
+            g = grade_answer(
             judge,
             case.question,
             case.reference_answer,
-            res.answer.render(),
-            [by_id[cid].text for cid in res.answer.cited_chunk_ids],
-        )
-        row.update(
-            faithfulness=g.faithfulness,
-            correctness=g.correctness,
-            judge_reasoning=g.reasoning,
-            judge_input_tokens=g.usage.input_tokens,
-            judge_output_tokens=g.usage.output_tokens,
-        )
+                res.answer.render(),
+                [by_id[cid].text for cid in res.answer.cited_chunk_ids],
+            )
+        except Exception as e:  # a failed grade shouldn't sink the whole run
+            row["error"] = f"judge: {e}"[:500]
+        else:
+            row.update(
+                faithfulness=g.faithfulness,
+                correctness=g.correctness,
+                judge_reasoning=g.reasoning,
+                judge_input_tokens=g.usage.input_tokens,
+                judge_output_tokens=g.usage.output_tokens,
+            )
     return row
 
 
+def _run_case_safe(pipeline: RAGPipeline, judge: LLM | None, case: EvalCase) -> dict:
+    """Run one case; if generation fails, record the error and keep going."""
+    try:
+        return _run_case(pipeline, judge, case)
+    except Exception as e:
+        retrieved = pipeline.retrieve(case.question)
+        docs = [sc.chunk.doc_id for sc in retrieved]
+        return {
+            "id": case.id,
+            "type": case.type,
+            "question": case.question,
+            "answerable": case.answerable,
+            "model_answered": False,
+            "answer": "",
+            "reference_answer": case.reference_answer,
+            "gold_docs": case.gold_docs,
+            "retrieved": [sc.chunk.id for sc in retrieved],
+            "cited": [],
+            "recall@k": M.recall_at_k(docs, case.gold_docs, pipeline.top_k),
+            "mrr": M.reciprocal_rank(docs, case.gold_docs),
+            "citation_precision": float("nan"),
+            "unsupported_sentences": 0,
+            "n_sentences": 0,
+            "dropped_citations": 0,
+            "latency_ms": float("nan"),
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "faithfulness": None,
+            "correctness": None,
+            "judge_reasoning": None,
+            "error": f"generation: {e}"[:500],
+        }
+
+
 def summarize(rows: list[dict], k: int) -> dict:
-    ans = [r for r in rows if r["answerable"]]
-    unans = [r for r in rows if not r["answerable"]]
+    errors = [r for r in rows if str(r.get("error", "")).startswith("generation")]
+    ok = [r for r in rows if r not in errors]
+    ans = [r for r in ok if r["answerable"]]
+    unans = [r for r in ok if not r["answerable"]]
+    all_ans = [r for r in rows if r["answerable"]]
     graded = [r for r in ans if r["faithfulness"] is not None]
     total_sentences = sum(r["n_sentences"] for r in rows)
     return {
         "n_cases": len(rows),
-        "n_answerable": len(ans),
-        "n_unanswerable": len(unans),
+        "n_answerable": len(all_ans),
+        "n_unanswerable": sum(1 for r in rows if not r["answerable"]),
+        "n_errors": len(errors),
+        "n_judge_errors": sum(1 for r in rows if str(r.get("error", "")).startswith("judge")),
         "retrieval": {
-            f"recall@{k}": M.mean([r["recall@k"] for r in ans]),
-            "mrr": M.mean([r["mrr"] for r in ans]),
+            f"recall@{k}": M.mean([r["recall@k"] for r in all_ans]),
+            "mrr": M.mean([r["mrr"] for r in all_ans]),
         },
         "generation": {
             "answer_rate": M.mean([1.0 if r["model_answered"] else 0.0 for r in ans]),
@@ -187,6 +230,8 @@ def render_report(summary: dict, ablation: dict, rows: list[dict], meta: dict) -
         f"- **Embedder:** `{meta['embedder']}` · **Retrieval:** `{meta['mode']}` · **k:** {k}",
         f"- **Cases:** {summary['n_cases']} ({summary['n_answerable']} answerable, "
         f"{summary['n_unanswerable']} unanswerable)",
+        f"- **Errors:** {summary['n_errors']} generation, {summary['n_judge_errors']} judge "
+        "(errored generations are excluded from generation metrics)",
         "",
         "## Headline metrics",
         "",
@@ -231,11 +276,19 @@ def render_report(summary: dict, ablation: dict, rows: list[dict], meta: dict) -
             f"{_fmt(v['correctness_mean'])} |"
         )
 
+    errored = [x for x in rows if x.get("error")]
+    if errored:
+        lines += ["", f"## Errors ({len(errored)})", ""]
+        for x in errored:
+            lines.append(f"- **{x['id']}**: {x['error'][:200]}")
     failures = [
         x
         for x in rows
-        if (x["answerable"] and (not x["model_answered"] or (x["correctness"] or 5) < 4))
-        or (not x["answerable"] and x["model_answered"])
+        if not str(x.get("error", "")).startswith("generation")
+        and (
+            (x["answerable"] and (not x["model_answered"] or (x["correctness"] or 5) < 4))
+            or (not x["answerable"] and x["model_answered"])
+        )
     ]
     lines += ["", f"## Failures ({len(failures)})", ""]
     if not failures:
@@ -267,7 +320,7 @@ def run_eval(
 ) -> dict:
     cases = load_golden(golden_path)
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        rows = list(pool.map(lambda c: _run_case(pipeline, judge, c), cases))
+        rows = list(pool.map(lambda c: _run_case_safe(pipeline, judge, c), cases))
 
     summary = summarize(rows, pipeline.top_k)
     ablation = retrieval_ablation(pipeline, cases)
