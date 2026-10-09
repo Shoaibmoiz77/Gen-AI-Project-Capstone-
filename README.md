@@ -126,6 +126,132 @@ and cited something irrelevant). The first means fix retrieval; the second means
 
 ### Results
 
+GPT-OSS 120B (free tier on Groq) as generator and judge, compared with a deterministic
+extractive baseline. Same 34 questions, same retrieval (hybrid, k=6).
+
+| Metric | Extractive baseline | GPT-OSS 120B (Groq) |
+|---|---|---|
+| Retrieval recall@6 | 100.0% | 100.0% |
+| Retrieval MRR | 0.97 | 0.97 |
+| Answer rate (answerable questions) | 65.5% | **93.1%** |
+| Abstention accuracy (unanswerable questions) | 40.0% | **100.0%** |
+| Citation precision | 94.7% | **100.0%** |
+| Unsupported sentence rate | 0.0% | 0.0% |
+| Judge faithfulness (1-5) | 5.00* | **5.00** |
+| Judge correctness (1-5) | 3.58* | **4.74** |
+| Correct answers (score >= 4) | 52.6% | **88.9%** |
+
+\* Baseline graded by a token-overlap heuristic, not an LLM, so its judge scores are indicative only.
+
+**Takeaways**
+- **No hallucinated refusals or answers on unanswerable questions:** the model declined all 5
+  questions the documents can't answer (pet insurance, the CEO, payload capacity, ...), versus
+  2 of 5 for the baseline.
+- **Every citation pointed to a correct source document**, and no sentence was left uncited.
+- **Retrieval is not the bottleneck:** every gold document was retrieved for every question,
+  so the remaining errors (2 abstentions on answerable questions, 3 partially correct answers)
+  are generation-side, which is where to focus next (prompting, or a stronger model).
+
+Reproduce with `groundwork eval --llm groq --out reports/groq`. Run your own model the same way
+and compare.
+
+**Retrieval ablation** | BM25 vs dense vs hybrid on the same questions, on every run |
+| **CI quality gate** | GitHub Actions fails the build if retrieval recall drops below a threshold, with no API key needed |
+| **Provider-agnostic** | Claude via the Anthropic SDK, or any OpenAI-compatible API: Groq and Gemini (free tiers) and Ollama (local), with retry and backoff for rate limits |
+| **Production shape** | FastAPI service, demo UI, Docker image, typed config, 37 tests that run offline |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Ingest
+        D[Markdown / text files] --> C[Heading-aware chunker]
+        C --> B[BM25 index]
+        C --> E[Embedder<br/>hashing · Voyage · fastembed]
+    end
+    Q[Question] --> B & E
+    B --> F[Reciprocal Rank Fusion]
+    E --> F
+    F -->|top-k chunks, numbered| G[Claude<br/>forced tool call]
+    G --> V[Citation validation]
+    V --> A[Cited answer<br/>or abstention]
+    A -. graded by .-> J[Eval harness<br/>metrics + LLM judge]
+```
+
+## Quickstart
+
+```bash
+git clone https://github.com/Shoaibmoiz77/Gen-AI-Project-Capstone-.git
+cd Gen-AI-Project-Capstone-
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+export ANTHROPIC_API_KEY=sk-ant-...   # or a free key: GROQ_API_KEY / GEMINI_API_KEY
+
+groundwork ingest                                  # index data/corpus
+groundwork ask "What's the hotel limit in London?" # cited answer in the terminal
+groundwork serve                                   # API + demo UI at http://127.0.0.1:8000
+```
+
+### Choosing a model provider
+
+The provider is picked automatically from whichever key is set, or explicitly with `--llm`:
+
+| `--llm` | Key | Default model | Cost |
+|---|---|---|---|
+| `anthropic` | `ANTHROPIC_API_KEY` | Claude Sonnet | Paid (prepaid credits) |
+| `groq` | `GROQ_API_KEY` ([console.groq.com](https://console.groq.com)) | `openai/gpt-oss-120b` | Free tier |
+| `gemini` | `GEMINI_API_KEY` ([aistudio.google.com](https://aistudio.google.com)) | `gemini-2.5-flash` | Free tier |
+| `ollama` | none, runs locally ([ollama.com](https://ollama.com)) | `llama3.1` | Free |
+| `fake` | none | extractive baseline | Free, offline |
+
+Override the model with `GROUNDWORK_MODEL`, or point at any other OpenAI-compatible server
+(OpenRouter, vLLM, LM Studio) with `GROUNDWORK_BASE_URL`. Free tiers have low request limits,
+so the eval runs one request at a time for `groq` and `gemini` and retries 429s with backoff.
+
+**No key at all?** Everything still runs on the `fake` extractive baseline, so you can explore
+retrieval, the API, the UI and the eval harness offline. `pytest` never touches the network.
+
+**Docker:**
+
+```bash
+docker build -t groundwork-rag .
+docker run --rm -p 8000:8000 -e ANTHROPIC_API_KEY groundwork-rag
+```
+
+## Evaluation
+
+The golden set (`data/eval/golden.jsonl`) has 34 questions over a fictional company handbook:
+direct lookups, paraphrased questions that share few words with the source, multi-document
+questions, and 5 **unanswerable** questions that test whether the system invents answers.
+
+```bash
+make eval           # Claude as generator and judge  -> reports/latest/report.md
+groundwork eval --llm groq --out reports/groq   # free alternative (GPT-OSS 120B on Groq)
+make eval-offline   # no API key: extractive baseline -> reports/offline-baseline/report.md
+```
+
+Each run writes `report.md` (human readable, includes a failure analysis), `results.json`
+(for CI gates and dashboards) and `cases.jsonl` (one row per question for debugging).
+
+### What's measured, and why
+
+| Metric | Question it answers | Failure it catches |
+|---|---|---|
+| Recall@k, MRR | Did retrieval surface the right documents, and how high? | Bad chunking, weak queries, wrong embedder |
+| Citation precision | Do citations point to the right documents? | Model citing whatever was nearby |
+| Unsupported sentence rate | Does any sentence lack a valid citation? | Ungrounded filler, invented citation ids |
+| Faithfulness (LLM judge) | Is every claim backed by the cited text? | Hallucination |
+| Correctness (LLM judge) | Does the answer match the reference? | Right sources, wrong conclusion |
+| Abstention accuracy | Does it say "I don't know" on unanswerable questions? | Confident invention |
+| Answer rate | Does it answer when it can? | Over-cautious refusal |
+
+Faithfulness and correctness are scored **separately** on purpose. An answer can be faithful but
+wrong (it cited the wrong policy accurately) or correct but unfaithful (the model knew the answer
+and cited something irrelevant). The first means fix retrieval; the second means fix the prompt.
+
+### Results
+
 **Offline baseline** (extractive `FakeLLM`, hashing embedder). This is the floor any real model
 has to beat. Full report: [`reports/offline-baseline/report.md`](reports/offline-baseline/report.md).
 
