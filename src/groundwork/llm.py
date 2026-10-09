@@ -89,7 +89,7 @@ class Provider:
 
 PROVIDERS: dict[str, Provider] = {
     "groq": Provider(
-        "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", "GROQ_API_KEY"
+        "https://api.groq.com/openai/v1", "openai/gpt-oss-120b", "GROQ_API_KEY"
     ),
     "gemini": Provider(
         "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -141,11 +141,25 @@ class OpenAICompatLLM:
                 time.sleep(min(wait, 60))
                 delay *= 2
                 continue
+            if r.status_code == 404 and "model" in r.text:
+                raise RuntimeError(
+                    f"Model {self.model!r} is not available on this provider/account. "
+                    f"Models you can use: {', '.join(self.list_models()) or 'unknown'}. "
+                    "Pick one with: GROUNDWORK_MODEL=<model id>"
+                )
             if r.status_code >= 400:
                 raise RuntimeError(f"{r.status_code} from {self.url}: {r.text[:500]}")
             return r.json()
         raise RuntimeError(f"Rate limited or unavailable after {self.max_retries} retries: "
                            f"{r.status_code} {r.text[:300]}")
+
+    def list_models(self) -> list[str]:
+        """Model ids this key can use, via the standard GET /models endpoint."""
+        try:
+            r = self.client.get(self.url.rsplit("/chat/completions", 1)[0] + "/models")
+            return sorted(m["id"] for m in r.json().get("data", []))
+        except Exception:
+            return []
 
     def call_tool(self, system: str, user: str, tool: dict[str, Any]) -> ToolResult:
         payload = {

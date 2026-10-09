@@ -102,3 +102,15 @@ def test_missing_key_gives_clear_error(monkeypatch):
 def test_ollama_needs_no_key():
     llm = get_llm("ollama")
     assert llm.name == "llama3.1"
+
+
+def test_unknown_model_lists_alternatives():
+    class HTTP(FakeHTTP):
+        def get(self, url):
+            assert url == "https://x.test/v1/models"
+            return SimpleNamespace(json=lambda: {"data": [{"id": "b-model"}, {"id": "a-model"}]})
+
+    http = HTTP([(404, {"error": {"message": "The model `old` does not exist"}}, {})])
+    llm = OpenAICompatLLM("https://x.test/v1", "old", client=http)
+    with pytest.raises(RuntimeError, match="a-model, b-model"):
+        llm.call_tool("s", "u", ANSWER_TOOL)
