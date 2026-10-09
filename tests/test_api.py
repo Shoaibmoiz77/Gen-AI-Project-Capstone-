@@ -35,3 +35,13 @@ def test_ui_is_served(pipeline):
     with _client(pipeline) as c:
         r = c.get("/")
     assert r.status_code == 200 and "Groundwork" in r.text
+
+
+def test_documents_and_mode(pipeline):
+    with _client(pipeline) as c:
+        docs = c.get("/documents").json()["documents"]
+        assert {d["doc_id"] for d in docs} >= {"expense-policy", "kestrel-x2-faq"}
+        r = c.post("/ask", json={"question": "What is the on-call stipend?", "mode": "bm25"})
+        assert r.status_code == 200
+        assert any(x["cited"] for x in r.json()["retrieved"])
+        assert c.post("/ask", json={"question": "x", "mode": "nope"}).status_code == 422
