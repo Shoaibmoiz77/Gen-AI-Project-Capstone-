@@ -144,7 +144,7 @@ extractive baseline. Same 34 questions, same retrieval (hybrid, k=6).
 \* Baseline graded by a token-overlap heuristic, not an LLM, so its judge scores are indicative only.
 
 **Takeaways**
-- **No hallucinated refusals or answers on unanswerable questions:** the model declined all 5
+- **No made-up answers on unanswerable questions:** the model declined all 5
   questions the documents can't answer (pet insurance, the CEO, payload capacity, ...), versus
   2 of 5 for the baseline.
 - **Every citation pointed to a correct source document**, and no sentence was left uncited.
