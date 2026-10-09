@@ -80,6 +80,28 @@ def test_anthropic_client_forces_tool_call(retriever):
     ans = generate_answer(llm, "q?", retriever.search("password", k=2))
     assert calls["tool_choice"] == {"type": "tool", "name": "submit_answer"}
     assert calls["tools"] == [ANSWER_TOOL]
-    assert calls["temperature"] == 0
     assert ans.usage.input_tokens == 120
     assert ans.render() == "Yes. [1]"
+
+
+def test_request_matches_installed_sdk_signature(retriever):
+    """Guard against SDK drift: every kwarg we send must exist on the real create()."""
+    import inspect
+
+    from anthropic.resources import Messages
+
+    allowed = set(inspect.signature(Messages.create).parameters)
+    calls = {}
+
+    class Recorder:
+        def create(self, **kw):
+            calls.update(kw)
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="tool_use", name="submit_answer",
+                                         input={"answerable": False, "sentences": []})],
+                usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+            )
+
+    llm = AnthropicLLM(model="m", client=SimpleNamespace(messages=Recorder()))
+    generate_answer(llm, "q?", retriever.search("password", k=2))
+    assert set(calls) <= allowed, f"unsupported kwargs: {set(calls) - allowed}"

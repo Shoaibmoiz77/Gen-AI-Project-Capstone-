@@ -31,7 +31,7 @@ emailing security@northwind.example. [1] The device will then be remotely wiped.
 | **Evaluation harness** | Recall@k, MRR, citation precision, unsupported-sentence rate, LLM-as-judge faithfulness and correctness, latency, token usage |
 | **Retrieval ablation** | BM25 vs dense vs hybrid on the same questions, on every run |
 | **CI quality gate** | GitHub Actions fails the build if retrieval recall drops below a threshold, with no API key needed |
-| **Production shape** | FastAPI service, demo UI, Docker image, typed config, 27 tests that run offline |
+| **Production shape** | FastAPI service, demo UI, Docker image, typed config, 28 tests that run offline |
 
 ## Architecture
 
@@ -166,7 +166,7 @@ src/groundwork/
   evals/           metrics, LLM judge, runner, report
 data/corpus/       sample documents (fictional company)
 data/eval/         golden question set
-tests/             27 offline tests
+tests/             28 offline tests
 ```
 
 ## Design decisions
@@ -179,8 +179,8 @@ tests/             27 offline tests
   adding them needs per-corpus tuning. RRF only uses ranks.
 - **Sources are data, not instructions.** The system prompt tells the model to ignore
   instructions inside retrieved text, a basic defense against prompt injection via documents.
-- **`temperature=0`** for both generation and judging, so eval runs are as repeatable as the
-  API allows.
+- **A test that checks every request argument against the installed SDK's signature**, so an
+  SDK upgrade that removes a parameter fails in CI instead of in front of a user.
 - **A fake model that speaks the real protocol.** Tests exercise the actual parsing and
   validation code paths, and the offline baseline gives a floor to compare against.
 
