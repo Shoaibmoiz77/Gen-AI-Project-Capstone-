@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from groundwork.config import get_settings
-from groundwork.llm import get_llm
+from groundwork.llm import detect_llm, get_llm
 from groundwork.pipeline import RAGPipeline
 from groundwork.retrieval import MODES, HybridRetriever
 
@@ -37,12 +37,10 @@ class SearchRequest(BaseModel):
 
 def _build_pipeline() -> RAGPipeline:
     s = get_settings()
-    kind = os.environ.get("GROUNDWORK_LLM") or (
-        "anthropic" if os.environ.get("ANTHROPIC_API_KEY") else "fake"
-    )
+    kind = os.environ.get("GROUNDWORK_LLM") or detect_llm()
     return RAGPipeline(
         HybridRetriever.load(s.index_dir),
-        get_llm(kind, s.model, s.max_tokens),
+        get_llm(kind, s.model or None, s.max_tokens),
         top_k=s.top_k,
         mode=s.retrieval_mode,
     )

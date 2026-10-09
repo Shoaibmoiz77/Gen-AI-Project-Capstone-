@@ -1,0 +1,104 @@
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from groundwork import llm as llm_mod
+from groundwork.generation import ANSWER_TOOL, generate_answer
+from groundwork.llm import OpenAICompatLLM, detect_llm, get_llm
+
+
+class FakeHTTP:
+    """Returns queued (status, body, headers) responses and records requests."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.requests = []
+
+    def post(self, url, json=None):
+        self.requests.append((url, json))
+        status, body, headers = self.responses.pop(0)
+        return SimpleNamespace(
+            status_code=status,
+            headers=headers,
+            json=lambda: body,
+            text=str(body),
+        )
+
+
+def _ok(args: dict):
+    return (
+        200,
+        {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {"function": {"name": "submit_answer", "arguments": json.dumps(args)}}
+                        ]
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 50, "completion_tokens": 7},
+        },
+        {},
+    )
+
+
+def test_openai_compatible_payload_and_parsing(retriever):
+    http = FakeHTTP([_ok({"answerable": True, "sentences": [{"text": "Yes.", "citations": [1]}]})])
+    llm = OpenAICompatLLM("https://example.test/v1/", "some-model", "key", client=http)
+    ans = generate_answer(llm, "q?", retriever.search("password", k=2))
+
+    url, payload = http.requests[0]
+    assert url == "https://example.test/v1/chat/completions"
+    assert payload["messages"][0]["role"] == "system"
+    assert payload["tools"][0]["function"]["parameters"] == ANSWER_TOOL["input_schema"]
+    assert payload["tool_choice"] == {"type": "function", "function": {"name": "submit_answer"}}
+    assert ans.render() == "Yes. [1]"
+    assert ans.usage.input_tokens == 50
+
+
+def test_rate_limit_is_retried(retriever, monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(llm_mod.time, "sleep", sleeps.append)
+    http = FakeHTTP(
+        [
+            (429, {"error": "slow down"}, {"retry-after": "3"}),
+            (503, {"error": "busy"}, {}),
+            _ok({"answerable": False, "sentences": []}),
+        ]
+    )
+    llm = OpenAICompatLLM("https://x.test/v1", "m", client=http)
+    ans = generate_answer(llm, "q?", retriever.search("password", k=2))
+    assert not ans.answerable
+    assert sleeps == [3.0, 4.0]  # honours Retry-After, then exponential backoff
+
+
+def test_client_errors_are_not_retried(retriever):
+    http = FakeHTTP([(401, {"error": "bad key"}, {})])
+    llm = OpenAICompatLLM("https://x.test/v1", "m", client=http)
+    with pytest.raises(RuntimeError, match="401"):
+        generate_answer(llm, "q?", retriever.search("password", k=2))
+    assert len(http.requests) == 1
+
+
+def test_provider_detection(monkeypatch):
+    for var in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    assert detect_llm() == "fake"
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    assert detect_llm() == "groq"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "y")
+    assert detect_llm() == "anthropic"
+
+
+def test_missing_key_gives_clear_error(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        get_llm("gemini")
+
+
+def test_ollama_needs_no_key():
+    llm = get_llm("ollama")
+    assert llm.name == "llama3.1"

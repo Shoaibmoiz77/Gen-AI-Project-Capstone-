@@ -14,10 +14,9 @@ def _env(name: str, default: str) -> str:
 @dataclass(frozen=True)
 class Settings:
     # Generation
-    model: str = field(default_factory=lambda: _env("GROUNDWORK_MODEL", "claude-sonnet-5-5"))
-    judge_model: str = field(
-        default_factory=lambda: _env("GROUNDWORK_JUDGE_MODEL", "claude-sonnet-5-5")
-    )
+    # Empty means "use the provider's default model" (see groundwork.llm.PROVIDERS).
+    model: str = field(default_factory=lambda: _env("GROUNDWORK_MODEL", ""))
+    judge_model: str = field(default_factory=lambda: _env("GROUNDWORK_JUDGE_MODEL", ""))
     max_tokens: int = field(default_factory=lambda: int(_env("GROUNDWORK_MAX_TOKENS", "1024")))
 
     # Retrieval

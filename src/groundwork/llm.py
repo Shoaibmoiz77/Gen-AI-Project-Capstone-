@@ -10,6 +10,8 @@ run with no API key and no network.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -69,6 +71,116 @@ class AnthropicLLM:
                 return ToolResult(
                     input=dict(block.input),
                     usage=Usage(resp.usage.input_tokens, resp.usage.output_tokens),
+                    latency_ms=latency,
+                )
+        raise RuntimeError(f"Model did not call tool {tool['name']!r}")
+
+
+# --------------------------------------------------------------------------------------------
+# Any OpenAI-compatible chat API: Groq, Gemini, Ollama, OpenRouter, vLLM, ...
+# --------------------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Provider:
+    base_url: str
+    default_model: str
+    key_env: str | None  # None = no key needed (local server)
+
+
+PROVIDERS: dict[str, Provider] = {
+    "groq": Provider(
+        "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", "GROQ_API_KEY"
+    ),
+    "gemini": Provider(
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        "gemini-2.5-flash",
+        "GEMINI_API_KEY",
+    ),
+    "ollama": Provider("http://localhost:11434/v1", "llama3.1", None),
+}
+
+
+class OpenAICompatLLM:
+    """Forced function calling over the OpenAI chat-completions wire format.
+
+    Free tiers rate-limit aggressively, so 429s and 5xx responses are retried with
+    exponential backoff (honouring ``Retry-After`` when the server sends it).
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        api_key: str | None = None,
+        max_tokens: int = 1024,
+        max_retries: int = 6,
+        client: Any | None = None,
+    ) -> None:
+        import httpx
+
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self.client = client or httpx.Client(timeout=120, headers=headers)
+        self.url = base_url.rstrip("/") + "/chat/completions"
+        self.model = model
+        self.max_tokens = max_tokens
+        self.max_retries = max_retries
+        self.name = model
+
+    def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
+        delay = 2.0
+        for attempt in range(self.max_retries + 1):
+            r = self.client.post(self.url, json=payload)
+            if r.status_code == 429 or r.status_code >= 500:
+                if attempt == self.max_retries:
+                    break
+                retry_after = r.headers.get("retry-after")
+                try:
+                    wait = float(retry_after) if retry_after else delay
+                except ValueError:
+                    wait = delay
+                time.sleep(min(wait, 60))
+                delay *= 2
+                continue
+            if r.status_code >= 400:
+                raise RuntimeError(f"{r.status_code} from {self.url}: {r.text[:500]}")
+            return r.json()
+        raise RuntimeError(f"Rate limited or unavailable after {self.max_retries} retries: "
+                           f"{r.status_code} {r.text[:300]}")
+
+    def call_tool(self, system: str, user: str, tool: dict[str, Any]) -> ToolResult:
+        payload = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool.get("description", ""),
+                        "parameters": tool["input_schema"],
+                    },
+                }
+            ],
+            "tool_choice": {"type": "function", "function": {"name": tool["name"]}},
+        }
+        start = time.perf_counter()
+        data = self._post(payload)
+        latency = (time.perf_counter() - start) * 1000
+
+        message = data["choices"][0]["message"]
+        for call in message.get("tool_calls") or []:
+            fn = call.get("function", {})
+            if fn.get("name") == tool["name"]:
+                args = fn.get("arguments") or "{}"
+                parsed = json.loads(args) if isinstance(args, str) else dict(args)
+                usage = data.get("usage") or {}
+                return ToolResult(
+                    input=parsed,
+                    usage=Usage(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)),
                     latency_ms=latency,
                 )
         raise RuntimeError(f"Model did not call tool {tool['name']!r}")
@@ -137,9 +249,30 @@ class FakeLLM:
         }
 
 
-def get_llm(kind: str, model: str, max_tokens: int = 1024) -> LLM:
+ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5-5"
+LLM_KINDS = ("anthropic", *PROVIDERS, "fake")
+
+
+def detect_llm() -> str:
+    """Pick a provider from whichever API key is set; fall back to the offline baseline."""
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    for kind, p in PROVIDERS.items():
+        if p.key_env and os.environ.get(p.key_env):
+            return kind
+    return "fake"
+
+
+def get_llm(kind: str, model: str | None = None, max_tokens: int = 1024) -> LLM:
     if kind == "fake":
         return FakeLLM()
     if kind == "anthropic":
-        return AnthropicLLM(model=model, max_tokens=max_tokens)
-    raise ValueError(f"Unknown LLM kind {kind!r}")
+        return AnthropicLLM(model=model or ANTHROPIC_DEFAULT_MODEL, max_tokens=max_tokens)
+    if kind in PROVIDERS:
+        p = PROVIDERS[kind]
+        key = os.environ.get(p.key_env) if p.key_env else None
+        if p.key_env and not key:
+            raise RuntimeError(f"{p.key_env} is not set (needed for --llm {kind})")
+        base = os.environ.get("GROUNDWORK_BASE_URL") or p.base_url
+        return OpenAICompatLLM(base, model or p.default_model, key, max_tokens=max_tokens)
+    raise ValueError(f"Unknown LLM kind {kind!r}; choose from {LLM_KINDS}")
