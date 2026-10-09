@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Groundwork RAG</title>
+<style>
+  :root {
+    --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65; --line: #e3e1da;
+    --accent: #2f5d50; --accent-soft: #e4eee9; --warn: #8a5a12; --warn-soft: #f6ecd9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151614; --panel: #1e1f1c; --ink: #ecebe6; --muted: #9a998f; --line: #31322e;
+      --accent: #8cc3ae; --accent-soft: #233229; --warn: #e3b36a; --warn-soft: #34291a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 16px 80px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; padding: 12px 14px; font: inherit; color: var(--ink);
+          background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { padding: 12px 18px; font: inherit; font-weight: 600; border: 0; border-radius: 10px;
+           background: var(--accent); color: var(--bg); cursor: pointer; }
+  button:disabled { opacity: .6; cursor: progress; }
+  .examples { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .examples button { background: transparent; color: var(--muted); border: 1px solid var(--line);
+                     font-weight: 400; font-size: .85rem; padding: 4px 10px; border-radius: 99px; }
+  .card { margin-top: 28px; background: var(--panel); border: 1px solid var(--line);
+          border-radius: 12px; padding: 20px 22px; }
+  .answer { font-size: 1.08rem; }
+  .cite { display: inline-block; min-width: 1.4em; margin-left: 2px; padding: 0 5px;
+          font-size: .75rem; font-weight: 700; text-align: center; border-radius: 6px;
+          background: var(--accent-soft); color: var(--accent); cursor: pointer; vertical-align: 2px; }
+  .abstain { color: var(--warn); background: var(--warn-soft); padding: 10px 12px; border-radius: 8px; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+       margin: 22px 0 8px; }
+  .src { border-top: 1px solid var(--line); padding: 10px 0; }
+  .src.hl { background: var(--accent-soft); margin: 0 -22px; padding: 10px 22px; }
+  .src b { font-size: .9rem; }
+  .src p { margin: 4px 0 0; color: var(--muted); font-size: .9rem; white-space: pre-wrap; }
+  .meta { margin-top: 14px; color: var(--muted); font-size: .8rem; }
+  .err { color: var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Groundwork</h1>
+  <p class="sub">Ask a question about the sample company handbook. Every sentence is cited, and
+    the system says so when the documents don't contain the answer.</p>
+  <form id="f">
+    <input id="q" autocomplete="off" placeholder="e.g. What's the hotel limit in London?" required>
+    <button id="go">Ask</button>
+  </form>
+  <div class="examples" id="ex"></div>
+  <div id="out"></div>
+</main>
+<script>
+const EXAMPLES = [
+  "Can I fly premium economy on a seven-hour flight?",
+  "I left my work laptop on a train. What should I do?",
+  "How much does a Kestrel X2 cost with Premier support?",
+  "Does the company offer pet insurance?",
+];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+for (const e of EXAMPLES) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = e;
+  b.onclick = () => { $("q").value = e; ask(); };
+  $("ex").appendChild(b);
+}
+
+function highlight(n) {
+  document.querySelectorAll(".src").forEach((el) => el.classList.toggle("hl", el.dataset.n == n));
+  document.querySelector(`.src[data-n="${n}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function ask() {
+  const question = $("q").value.trim();
+  if (!question) return;
+  $("go").disabled = true;
+  $("out").innerHTML = '<div class="card meta">Retrieving and generating…</div>';
+  try {
+    const r = await fetch("/ask", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    const num = Object.fromEntries(d.sources.map((s) => [s.chunk_id, s.n]));
+    let html = '<div class="card">';
+    if (!d.answerable) {
+      html += `<div class="abstain">${esc(d.answer)}</div>`;
+    } else {
+      html += '<div class="answer">' + d.sentences.map((s) =>
+        esc(s.text) + s.chunk_ids.map((c) =>
+          `<span class="cite" onclick="highlight(${num[c]})">${num[c]}</span>`).join("")
+      ).join(" ") + "</div>";
+      html += "<h2>Sources</h2>" + d.sources.map((s) =>
+        `<div class="src" data-n="${s.n}"><b>[${s.n}] ${esc(s.title)}${s.section ? " › " + esc(s.section) : ""}</b>` +
+        `<p>${esc(s.text)}</p></div>`).join("");
+    }
+    html += `<div class="meta">${d.timing_ms.total} ms · retrieval ${d.timing_ms.retrieval} ms · ` +
+            `${d.usage.input_tokens} in / ${d.usage.output_tokens} out tokens</div></div>`;
+    $("out").innerHTML = html;
+  } catch (e) {
+    $("out").innerHTML = `<div class="card err">Error: ${esc(e.message)}</div>`;
+  } finally {
+    $("go").disabled = false;
+  }
+}
+$("f").onsubmit = (e) => { e.preventDefault(); ask(); };
+</script>
+</body>
+</html>

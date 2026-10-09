@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "timestamp": "2026-10-09 20:54 UTC",
+    "generator": "fake-extractive",
+    "judge": "fake-extractive",
+    "embedder": "hashing",
+    "mode": "hybrid",
+    "top_k": 6,
+    "python": "3.13.16"
+  },
+  "summary": {
+    "n_cases": 34,
+    "n_answerable": 29,
+    "n_unanswerable": 5,
+    "retrieval": {
+      "recall@6": 1.0,
+      "mrr": 0.9655172413793104
+    },
+    "generation": {
+      "answer_rate": 0.6551724137931034,
+      "abstention_accuracy": 0.4,
+      "citation_precision": 0.9473684210526315,
+      "unsupported_sentence_rate": 0.0,
+      "faithfulness_mean": 5.0,
+      "correctness_mean": 3.5789473684210527,
+      "correct_rate": 0.5263157894736842,
+      "n_graded": 19
+    },
+    "cost": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "judge_input_tokens": 0,
+      "judge_output_tokens": 0
+    },
+    "latency_ms": {
+      "p50": 0.6219714999815551,
+      "p95": 7.432390599996097
+    },
+    "by_type": {
+      "lookup": {
+        "n": 18,
+        "correctness_mean": 3.6,
+        "recall@6": 1.0
+      },
+      "multi_hop": {
+        "n": 2,
+        "correctness_mean": 4.0,
+        "recall@6": 1.0
+      },
+      "paraphrase": {
+        "n": 9,
+        "correctness_mean": 3.0,
+        "recall@6": 1.0
+      },
+      "unanswerable": {
+        "n": 5,
+        "correctness_mean": null,
+        "recall@6": null
+      }
+    }
+  },
+  "retrieval_ablation": {
+    "bm25": {
+      "mrr": 0.9827586206896551,
+      "recall@1": 0.9482758620689655,
+      "recall@3": 1.0,
+      "recall@6": 1.0
+    },
+    "dense": {
+      "mrr": 0.925287356321839,
+      "recall@1": 0.8448275862068966,
+      "recall@3": 0.9655172413793104,
+      "recall@6": 1.0
+    },
+    "hybrid": {
+      "mrr": 0.9655172413793104,
+      "recall@1": 0.9137931034482759,
+      "recall@3": 1.0,
+      "recall@6": 1.0
+    }
+  }
+}
