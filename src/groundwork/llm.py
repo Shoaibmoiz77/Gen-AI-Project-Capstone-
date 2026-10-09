@@ -126,10 +126,23 @@ class OpenAICompatLLM:
         self.max_retries = max_retries
         self.name = model
 
+    # Some providers (e.g. Groq) reject a response when the model writes prose instead of a
+    # valid tool call. Sampling again almost always succeeds, so these are retried too.
+    MALFORMED_OUTPUT_CODES = ("output_parse_failed", "tool_use_failed")
+    MAX_MALFORMED_RETRIES = 3
+
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         delay = 2.0
+        malformed = 0
         for attempt in range(self.max_retries + 1):
             r = self.client.post(self.url, json=payload)
+            if (
+                r.status_code == 400
+                and any(code in r.text for code in self.MALFORMED_OUTPUT_CODES)
+                and malformed < self.MAX_MALFORMED_RETRIES
+            ):
+                malformed += 1
+                continue
             if r.status_code == 429 or r.status_code >= 500:
                 if attempt == self.max_retries:
                     break

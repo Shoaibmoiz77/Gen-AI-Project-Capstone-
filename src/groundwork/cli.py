@@ -119,8 +119,19 @@ def main(argv: list[str] | None = None) -> None:
     common(sp)
     sp.set_defaults(func=cmd_serve)
 
+    p.add_argument("--debug", action="store_true", help="Show full tracebacks")
     args = p.parse_args(argv)
-    args.func(args, settings)
+    try:
+        args.func(args, settings)
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as e:
+        if args.debug:
+            raise
+        print(f"Error: {e}", file=sys.stderr)
+        print("(run with --debug before the command name for the full traceback)",
+              file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

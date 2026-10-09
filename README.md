@@ -32,7 +32,7 @@ emailing security@northwind.example. [1] The device will then be remotely wiped.
 | **Retrieval ablation** | BM25 vs dense vs hybrid on the same questions, on every run |
 | **CI quality gate** | GitHub Actions fails the build if retrieval recall drops below a threshold, with no API key needed |
 | **Provider-agnostic** | Claude via the Anthropic SDK, or any OpenAI-compatible API: Groq and Gemini (free tiers) and Ollama (local), with retry and backoff for rate limits |
-| **Production shape** | FastAPI service, demo UI, Docker image, typed config, 34 tests that run offline |
+| **Production shape** | FastAPI service, demo UI, Docker image, typed config, 37 tests that run offline |
 
 ## Architecture
 
@@ -182,7 +182,7 @@ src/groundwork/
   evals/           metrics, LLM judge, runner, report
 data/corpus/       sample documents (fictional company)
 data/eval/         golden question set
-tests/             34 offline tests
+tests/             37 offline tests
 ```
 
 ## Design decisions
