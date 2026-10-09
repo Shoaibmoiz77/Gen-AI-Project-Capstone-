@@ -3,121 +3,420 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Groundwork RAG</title>
+<title>Groundwork · Ask the handbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f7f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a65; --line: #e3e1da;
-    --accent: #2f5d50; --accent-soft: #e4eee9; --warn: #8a5a12; --warn-soft: #f6ecd9;
+    --mist: #E9EEF2;
+    --paper: #FFFFFF;
+    --ink: #17232F;
+    --slate: #52616F;
+    --rule: #D3DBE2;
+    --soft: #F4F7F9;
+    --steel: #2E4A62;
+    --marker: #FFE45E;
+    --marker-soft: #FFF4B8;
+    --ok: #2D6A4F;
+    --warn-ink: #7A4B00;
+    --warn-bg: #FFF1D6;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #151614; --panel: #1e1f1c; --ink: #ecebe6; --muted: #9a998f; --line: #31322e;
-      --accent: #8cc3ae; --accent-soft: #233229; --warn: #e3b36a; --warn-soft: #34291a;
+      --mist: #0F161D;
+      --paper: #16202A;
+      --ink: #E4EBF1;
+      --slate: #93A3B2;
+      --rule: #263442;
+      --soft: #1B2733;
+      --steel: #9CC0DE;
+      --marker: rgba(255, 220, 60, .34);
+      --marker-soft: rgba(255, 220, 60, .14);
+      --ok: #7CC4A0;
+      --warn-ink: #F2C46D;
+      --warn-bg: #2E2414;
     }
   }
+
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
-         font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 48px 16px 80px; }
-  h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
-  .sub { color: var(--muted); margin: 0 0 28px; }
-  form { display: flex; gap: 8px; }
-  input { flex: 1; min-width: 0; padding: 12px 14px; font: inherit; color: var(--ink);
-          background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
-  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button { padding: 12px 18px; font: inherit; font-weight: 600; border: 0; border-radius: 10px;
-           background: var(--accent); color: var(--bg); cursor: pointer; }
-  button:disabled { opacity: .6; cursor: progress; }
-  .examples { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
-  .examples button { background: transparent; color: var(--muted); border: 1px solid var(--line);
-                     font-weight: 400; font-size: .85rem; padding: 4px 10px; border-radius: 99px; }
-  .card { margin-top: 28px; background: var(--panel); border: 1px solid var(--line);
-          border-radius: 12px; padding: 20px 22px; }
-  .answer { font-size: 1.08rem; }
-  .cite { display: inline-block; min-width: 1.4em; margin-left: 2px; padding: 0 5px;
-          font-size: .75rem; font-weight: 700; text-align: center; border-radius: 6px;
-          background: var(--accent-soft); color: var(--accent); cursor: pointer; vertical-align: 2px; }
-  .abstain { color: var(--warn); background: var(--warn-soft); padding: 10px 12px; border-radius: 8px; }
-  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
-       margin: 22px 0 8px; }
-  .src { border-top: 1px solid var(--line); padding: 10px 0; }
-  .src.hl { background: var(--accent-soft); margin: 0 -22px; padding: 10px 22px; }
-  .src b { font-size: .9rem; }
-  .src p { margin: 4px 0 0; color: var(--muted); font-size: .9rem; white-space: pre-wrap; }
-  .meta { margin-top: 14px; color: var(--muted); font-size: .8rem; }
-  .err { color: var(--warn); }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--mist); color: var(--ink);
+    font: 400 16px/1.55 var(--sans);
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  main { flex: 1; width: 100%; }
+  a { color: var(--steel); }
+  :focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; border-radius: 4px; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- top bar ---------- */
+  .bar { border-bottom: 1px solid var(--rule); background: var(--paper); }
+  .bar .wrap { display: flex; align-items: center; gap: 16px; min-height: 60px; flex-wrap: wrap; }
+  .mark { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem;
+          letter-spacing: -.01em; text-decoration: none; color: var(--ink); }
+  .glyph { width: 26px; height: 26px; }
+  .tag { color: var(--slate); font-size: .9rem; }
+  .status { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: .85rem;
+            color: var(--slate); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); }
+  .dot.live { background: var(--ok); }
+
+  /* ---------- ask ---------- */
+  .ask { padding: 56px 0 28px; }
+  h1 { margin: 0 0 14px; font-size: clamp(2rem, 4.4vw, 3.1rem); line-height: 1.08;
+       letter-spacing: -.025em; font-weight: 600; }
+  .lede { margin: 0 0 28px; color: var(--slate); font-size: 1.05rem; max-width: 60ch; }
+  form.q { display: flex; background: var(--paper); border: 1.5px solid var(--rule);
+           border-radius: 14px; padding: 6px; transition: border-color .15s; }
+  form.q:focus-within { border-color: var(--steel); }
+  form.q input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink);
+                 font: 400 1.15rem var(--sans); padding: 12px 14px; }
+  form.q input:focus { outline: none; }
+  form.q input::placeholder { color: var(--slate); opacity: .8; }
+  .go { border: 0; border-radius: 10px; padding: 0 22px; font: 600 1rem var(--sans);
+        background: var(--ink); color: var(--paper); cursor: pointer; }
+  .go:disabled { opacity: .55; cursor: progress; }
+  kbd { font: 500 .75rem var(--sans); border: 1px solid var(--rule); border-bottom-width: 2px;
+        border-radius: 5px; padding: 1px 6px; color: var(--slate); background: var(--soft); }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; margin-top: 16px; }
+  .seg { display: inline-flex; align-items: center; gap: 10px; font-size: .9rem; color: var(--slate); }
+  .seg-group { display: inline-flex; background: var(--paper); border: 1px solid var(--rule);
+               border-radius: 9px; padding: 3px; }
+  .seg-group button { border: 0; background: transparent; color: var(--slate); cursor: pointer;
+                      font: 500 .85rem var(--sans); padding: 5px 12px; border-radius: 6px; }
+  .seg-group button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .tries { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .9rem; color: var(--slate); }
+  .tries button { border: 0; background: none; padding: 0; color: var(--steel); cursor: pointer;
+                  font: inherit; text-decoration: underline; text-decoration-color: var(--rule);
+                  text-underline-offset: 3px; }
+  .tries button:hover { text-decoration-color: currentColor; }
+
+  /* ---------- result ---------- */
+  .result { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 28px;
+            padding: 8px 0 48px; }
+  .pane { background: var(--paper); border: 1px solid var(--rule); border-radius: 16px; }
+  .answer { padding: 28px 30px; align-self: start; }
+  .pane-title { margin: 0 0 14px; font-size: .95rem; font-weight: 600; color: var(--slate); }
+  .prose { font: 400 1.3rem/1.6 var(--serif); margin: 0; max-width: 62ch; }
+  .s { border-radius: 4px; padding: 1px 0; cursor: default; transition: background .12s; }
+  .s.on { background: var(--marker-soft); }
+  .s.unsupported { text-decoration: underline wavy var(--warn-ink); text-underline-offset: 4px; }
+  sup.c { font: 600 .68rem var(--sans); }
+  sup.c button { border: 1px solid var(--rule); background: var(--soft); color: var(--steel);
+                 border-radius: 5px; padding: 0 5px; margin-left: 2px; cursor: pointer; font: inherit; }
+  sup.c button:hover, .s.on sup.c button { background: var(--marker); border-color: transparent;
+                                            color: var(--ink); }
+  .meta { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--rule);
+          display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .85rem; color: var(--slate); }
+
+  .absent svg { flex: none; margin-top: 2px; }
+  .result.single { grid-template-columns: minmax(0, 760px); }
+  .absent { display: flex; gap: 14px; align-items: flex-start; background: var(--warn-bg);
+            color: var(--warn-ink); border-radius: 12px; padding: 16px 18px; }
+  .absent strong { display: block; color: var(--ink); margin-bottom: 2px; }
+  .absent p { margin: 0; }
+
+  details.trace { margin-top: 18px; }
+  details.trace summary { cursor: pointer; color: var(--steel); font-size: .9rem; font-weight: 500; }
+  .trace ol { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+  .trace li { display: grid; grid-template-columns: 22px minmax(0, 1fr) 90px; gap: 10px;
+              align-items: center; font-size: .85rem; color: var(--slate); }
+  .trace .rk { font-variant-numeric: tabular-nums; text-align: right; }
+  .trace .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trace li.cited .nm { color: var(--ink); font-weight: 500; }
+  .trace .meter { height: 6px; background: var(--soft); border-radius: 3px; overflow: hidden; }
+  .trace .meter i { display: block; height: 100%; background: var(--rule); }
+  .trace li.cited .meter i { background: var(--steel); }
+
+  .evidence { padding: 28px 0 8px; align-self: start; }
+  .evidence .pane-title { padding: 0 24px; }
+  .src { padding: 16px 24px; border-top: 1px solid var(--rule); transition: opacity .15s; }
+  .src.dim { opacity: .45; }
+  .src h3 { margin: 0 0 6px; font-size: .9rem; font-weight: 600; display: flex; gap: 8px;
+            align-items: baseline; }
+  .src h3 .n { flex: none; display: inline-grid; place-items: center; min-width: 22px; height: 22px;
+               border-radius: 6px; background: var(--soft); color: var(--steel); font-size: .75rem; }
+  .src.on h3 .n { background: var(--marker); color: var(--ink); }
+  .src h3 .where { color: var(--slate); font-weight: 400; }
+  .src p { margin: 0; font: 400 .98rem/1.6 var(--serif); color: var(--ink); white-space: pre-line; }
+  .src mark { background: var(--marker-soft); color: inherit; border-radius: 3px; padding: 0 1px; }
+  .src.on mark { background: var(--marker); }
+
+  /* ---------- library (empty state) ---------- */
+  .library { padding: 8px 0 48px; }
+  .library h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  .library > p { margin: 0 0 18px; color: var(--slate); }
+  .docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+          column-gap: 28px; }
+  .doc { padding: 16px 0 18px; border-top: 1px solid var(--rule); }
+  .doc h3 { margin: 0 0 4px; font-size: 1rem; }
+  .doc p { margin: 0; color: var(--slate); font-size: .88rem; }
+
+  .loading { padding: 28px 30px; color: var(--slate); }
+  .loading .line { height: 14px; border-radius: 7px; background: var(--soft); margin-top: 12px;
+                   animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .err { padding: 20px 24px; color: var(--warn-ink); }
+
+  /* ---------- footer ---------- */
+  footer { border-top: 1px solid var(--rule); background: var(--paper); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 18px 40px; padding-top: 28px; padding-bottom: 32px;
+                 align-items: flex-start; }
+  .scores { display: flex; flex-wrap: wrap; gap: 18px 36px; margin: 0; }
+  .scores div { display: flex; flex-direction: column; }
+  .scores dd { order: -1; }
+  .scores dt { font-size: .82rem; color: var(--slate); max-width: 18ch; }
+  .scores dd { margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -.02em; }
+  .about { max-width: 38ch; font-size: .88rem; color: var(--slate); margin: 0 0 0 auto; }
+
+  /* one orchestrated moment: the answer writes itself in, sentence by sentence */
+  .reveal .s { opacity: 0; animation: in .45s ease forwards; }
+  @keyframes in { to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal .s { opacity: 1; animation: none; }
+    .loading .line { animation: none; }
+  }
+
+  @media (max-width: 860px) {
+    .result { grid-template-columns: 1fr; }
+    .ask { padding-top: 36px; }
+    .about { margin-left: 0; }
+  }
+  @media (max-width: 520px) {
+    .wrap { padding: 0 16px; }
+    .tag { display: none; }
+    .answer { padding: 22px 20px; }
+    .prose { font-size: 1.15rem; }
+    .src, .evidence .pane-title { padding-left: 18px; padding-right: 18px; }
+    .go { padding: 0 16px; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>Groundwork</h1>
-  <p class="sub">Ask a question about the sample company handbook. Every sentence is cited, and
-    the system says so when the documents don't contain the answer.</p>
-  <form id="f">
-    <input id="q" autocomplete="off" placeholder="e.g. What's the hotel limit in London?" required>
-    <button id="go">Ask</button>
-  </form>
-  <div class="examples" id="ex"></div>
-  <div id="out"></div>
+<header class="bar">
+  <div class="wrap">
+    <a class="mark" href="/" aria-label="Groundwork home">
+      <svg class="glyph" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="1" y="1" width="24" height="24" rx="7" fill="var(--ink)"/>
+        <path d="M7 16.5h12M7 12.5h8" stroke="var(--paper)" stroke-width="2" stroke-linecap="round"/>
+        <rect x="6" y="18.5" width="14" height="3" rx="1.5" fill="#FFE45E"/>
+      </svg>
+      Groundwork
+    </a>
+    <span class="tag">Answers from the Northwind handbook, with sources</span>
+    <span class="status" id="status"><span class="dot"></span>Connecting…</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="ask">
+    <h1>Ask the handbook anything.</h1>
+    <p class="lede">Every sentence in the answer links to the passage it came from. If the
+      handbook doesn't cover your question, you'll be told so instead of getting a guess.</p>
+
+    <form class="q" id="f" role="search">
+      <label for="q" class="visually-hidden" style="position:absolute;left:-9999px">Your question</label>
+      <input id="q" autocomplete="off" placeholder="How much can I spend on a hotel in London?" required>
+      <button class="go" id="go">Ask</button>
+    </form>
+
+    <div class="controls">
+      <div class="seg">
+        <span id="mode-label">Search by</span>
+        <div class="seg-group" role="group" aria-labelledby="mode-label" id="modes">
+          <button type="button" data-mode="hybrid" aria-pressed="true">Both</button>
+          <button type="button" data-mode="bm25" aria-pressed="false">Keywords</button>
+          <button type="button" data-mode="dense" aria-pressed="false">Similarity</button>
+        </div>
+      </div>
+      <div class="tries" id="tries"><span>Try</span></div>
+    </div>
+  </section>
+
+  <section id="out" aria-live="polite"></section>
 </main>
+
+<footer>
+  <div class="wrap">
+    <dl class="scores" aria-label="Evaluation results on 34 test questions">
+      <div><dt>answers judged correct</dt><dd>89%</dd></div>
+      <div><dt>citations pointing to the right document</dt><dd>100%</dd></div>
+      <div><dt>out-of-scope questions declined</dt><dd>5 of 5</dd></div>
+    </dl>
+    <p class="about">Measured on 34 test questions with GPT-OSS 120B. Northwind Robotics is a
+      fictional company. <a href="https://github.com/Shoaibmoiz77/Gen-AI-Project-Capstone-">Source code and full evaluation</a></p>
+  </div>
+</footer>
+
 <script>
 const EXAMPLES = [
   "Can I fly premium economy on a seven-hour flight?",
   "I left my work laptop on a train. What should I do?",
-  "How much does a Kestrel X2 cost with Premier support?",
-  "Does the company offer pet insurance?",
+  "What does a Kestrel X2 cost with Premier support?",
+  "Is there a pet insurance benefit?",
 ];
-const $ = (id) => document.getElementById(id);
+const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const STOP = new Set("a an and are as at be by can do does for from has have how i if in is it its of on or our so that the their there they this to was we what when where which who why will with you your my me".split(" "));
+const words = (t) => new Set((t.toLowerCase().match(/[a-z0-9$%.]+/g) || []).filter((w) => !STOP.has(w)));
+const out = $("#out");
+let mode = "hybrid";
+let chunkCount = 0;
 
+/* ---------- status + library ---------- */
+fetch("/health").then((r) => r.json()).then((h) => {
+  chunkCount = h.chunks;
+  const model = h.llm === "fake-extractive" ? "offline baseline" : h.llm;
+  $("#status").innerHTML = `<span class="dot live"></span>${esc(model)}, ${h.chunks} passages`;
+}).catch(() => { $("#status").innerHTML = '<span class="dot"></span>Server not reachable'; });
+
+function showLibrary(target = out) {
+  fetch("/documents").then((r) => r.json()).then(({ documents }) => {
+    if (target === out && out.dataset.state) return;
+    target.innerHTML = `<div class="library"><h2>What's in the handbook</h2>
+      <p>${documents.length} documents. Ask about any of them, or about something they don't cover.</p>
+      <div class="docs">${documents.map((d) => `<div class="doc"><h3>${esc(d.title)}</h3>
+        <p>${esc(d.sections.filter((s) => !s.includes(">")).slice(0, 5).join(", "))}</p></div>`).join("")}</div></div>`;
+  }).catch(() => {});
+}
+showLibrary();
+
+/* ---------- controls ---------- */
 for (const e of EXAMPLES) {
   const b = document.createElement("button");
   b.type = "button"; b.textContent = e;
-  b.onclick = () => { $("q").value = e; ask(); };
-  $("ex").appendChild(b);
+  b.onclick = () => { $("#q").value = e; ask(); };
+  $("#tries").appendChild(b);
 }
+$("#modes").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  mode = b.dataset.mode;
+  $("#modes").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  if ($("#q").value.trim()) ask();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "/" && document.activeElement !== $("#q")) { e.preventDefault(); $("#q").focus(); }
+});
+$("#f").onsubmit = (e) => { e.preventDefault(); ask(); };
 
-function highlight(n) {
-  document.querySelectorAll(".src").forEach((el) => el.classList.toggle("hl", el.dataset.n == n));
-  document.querySelector(`.src[data-n="${n}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+/* ---------- evidence linking ---------- */
+function bestSentence(passage, sentence) {
+  const parts = passage.split(/(?<=[.!?])\s+/);
+  const target = words(sentence);
+  let best = -1, score = 0;
+  parts.forEach((p, i) => {
+    const w = words(p); let hit = 0;
+    w.forEach((x) => { if (target.has(x)) hit++; });
+    const s = hit / Math.max(4, w.size);
+    if (s > score) { score = s; best = i; }
+  });
+  return { parts, best };
 }
+function link(on, sIdx) {
+  const sentence = sIdx == null ? null : out.querySelector(`.s[data-i="${sIdx}"]`);
+  const nums = sentence ? sentence.dataset.n.split(",").filter(Boolean) : [];
+  out.querySelectorAll(".s").forEach((el) => el.classList.toggle("on", on && el === sentence));
+  out.querySelectorAll(".src").forEach((el) => {
+    const hit = on && nums.includes(el.dataset.n);
+    el.classList.toggle("on", hit);
+    el.classList.toggle("dim", on && nums.length > 0 && !hit);
+  });
+}
+window.focusSource = (n, sIdx) => {
+  link(true, sIdx);
+  out.querySelector(`.src[data-n="${n}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+};
 
+/* ---------- ask ---------- */
 async function ask() {
-  const question = $("q").value.trim();
+  const question = $("#q").value.trim();
   if (!question) return;
-  $("go").disabled = true;
-  $("out").innerHTML = '<div class="card meta">Retrieving and generating…</div>';
+  $("#go").disabled = true;
+  out.dataset.state = "loading";
+  out.innerHTML = `<div class="result"><div class="pane loading">Searching ${chunkCount || "the"} passages and writing an answer…
+    <div class="line" style="width:92%"></div><div class="line" style="width:78%"></div><div class="line" style="width:54%"></div></div></div>`;
   try {
-    const r = await fetch("/ask", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
+    const r = await fetch("/ask", { method: "POST", headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ question, mode }) });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || r.statusText);
-    const num = Object.fromEntries(d.sources.map((s) => [s.chunk_id, s.n]));
-    let html = '<div class="card">';
-    if (!d.answerable) {
-      html += `<div class="abstain">${esc(d.answer)}</div>`;
-    } else {
-      html += '<div class="answer">' + d.sentences.map((s) =>
-        esc(s.text) + s.chunk_ids.map((c) =>
-          `<span class="cite" onclick="highlight(${num[c]})">${num[c]}</span>`).join("")
-      ).join(" ") + "</div>";
-      html += "<h2>Sources</h2>" + d.sources.map((s) =>
-        `<div class="src" data-n="${s.n}"><b>[${s.n}] ${esc(s.title)}${s.section ? " › " + esc(s.section) : ""}</b>` +
-        `<p>${esc(s.text)}</p></div>`).join("");
-    }
-    html += `<div class="meta">${d.timing_ms.total} ms · retrieval ${d.timing_ms.retrieval} ms · ` +
-            `${d.usage.input_tokens} in / ${d.usage.output_tokens} out tokens</div></div>`;
-    $("out").innerHTML = html;
+    if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : r.statusText);
+    render(d);
   } catch (e) {
-    $("out").innerHTML = `<div class="card err">Error: ${esc(e.message)}</div>`;
+    out.dataset.state = "error";
+    out.innerHTML = `<div class="result"><div class="pane err"><strong>The answer couldn't be generated.</strong><br>
+      ${esc(e.message)}<br>Check that the server is running and your API key is set, then ask again.</div></div>`;
   } finally {
-    $("go").disabled = false;
+    $("#go").disabled = false;
   }
 }
-$("f").onsubmit = (e) => { e.preventDefault(); ask(); };
+
+function render(d) {
+  out.dataset.state = "answer";
+  const num = Object.fromEntries(d.sources.map((s) => [s.chunk_id, s.n]));
+  const max = Math.max(...d.retrieved.map((x) => x.score), 1e-9);
+  const modeName = { hybrid: "keywords and similarity", bm25: "keywords", dense: "similarity" }[mode];
+
+  const trace = `<details class="trace"><summary>How it found this: ${d.retrieved.length} passages ranked by ${modeName}</summary>
+    <ol>${d.retrieved.map((x) => `<li class="${x.cited ? "cited" : ""}">
+      <span class="rk">${x.rank}</span>
+      <span class="nm" title="${esc(x.title)} › ${esc(x.section)}">${esc(x.title)} › ${esc(x.section)}${x.cited ? " (cited)" : ""}</span>
+      <span class="meter" aria-label="relevance ${Math.round((x.score / max) * 100)}%"><i style="width:${Math.max(6, (x.score / max) * 100)}%"></i></span>
+    </li>`).join("")}</ol></details>`;
+
+  const meta = `<div class="meta"><span>${(d.timing_ms.total / 1000).toFixed(1)} s total</span>
+    <span>search ${Math.round(d.timing_ms.retrieval)} ms</span>
+    ${d.usage.input_tokens ? `<span>${d.usage.input_tokens.toLocaleString()} tokens in, ${d.usage.output_tokens.toLocaleString()} out</span>` : ""}</div>`;
+
+  if (!d.answerable) {
+    out.innerHTML = `<div class="result single"><div class="pane answer">
+      <div class="absent"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="9.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 6v6M11 15.2v.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <div><strong>The handbook doesn't cover this.</strong><p>No passage answers the question, so no answer was written. Try rephrasing it, or ask about one of the topics below.</p></div></div>
+      ${trace}${meta}</div></div><div id="lib"></div>`;
+    showLibrary($("#lib"));
+    return;
+  }
+
+  const sentences = d.sentences.map((s, i) => {
+    const ns = s.chunk_ids.map((c) => num[c]);
+    const cites = ns.map((n) => `<button type="button" aria-label="Show source ${n}" onclick="focusSource(${n}, ${i})">${n}</button>`).join("");
+    return `<span class="s${ns.length ? "" : " unsupported"}" data-i="${i}" data-n="${ns.join(",")}"
+      style="animation-delay:${i * 140}ms" tabindex="0">${esc(s.text)}${ns.length ? `<sup class="c">${cites}</sup>` : ""}</span>`;
+  }).join(" ");
+
+  const sources = d.sources.map((s) => {
+    const citing = d.sentences.filter((x) => x.chunk_ids.includes(s.chunk_id));
+    const marks = new Set();
+    let parts = s.text.split(/(?<=[.!?])\s+/);
+    citing.forEach((x) => { const b = bestSentence(s.text, x.text); parts = b.parts; if (b.best >= 0) marks.add(b.best); });
+    const body = parts.map((p, i) => marks.has(i) ? `<mark>${esc(p)}</mark>` : esc(p)).join(" ");
+    return `<article class="src" data-n="${s.n}"><h3><span class="n">${s.n}</span>
+      <span>${esc(s.title)}${s.section ? ` <span class="where">› ${esc(s.section)}</span>` : ""}</span></h3><p>${body}</p></article>`;
+  }).join("");
+
+  out.innerHTML = `<div class="result">
+    <div class="pane answer"><h2 class="pane-title">Answer</h2><p class="prose reveal">${sentences}</p>${trace}${meta}</div>
+    <aside class="pane evidence" aria-label="Sources"><h2 class="pane-title">Evidence</h2>${sources}</aside></div>`;
+
+  out.querySelectorAll(".s").forEach((el) => {
+    const i = +el.dataset.i;
+    el.addEventListener("mouseenter", () => link(true, i));
+    el.addEventListener("focus", () => link(true, i));
+  });
+  out.querySelector(".prose").addEventListener("mouseleave", () => link(false));
+  out.querySelectorAll(".src").forEach((el) => {
+    el.addEventListener("mouseenter", () => {
+      const first = [...out.querySelectorAll(".s")].find((x) => x.dataset.n.split(",").includes(el.dataset.n));
+      if (first) link(true, +first.dataset.i);
+    });
+    el.addEventListener("mouseleave", () => link(false));
+  });
+}
 </script>
 </body>
 </html>

@@ -2,6 +2,7 @@
 
     POST /ask      {"question": "...", "k": 6}  -> cited answer + sources
     POST /search   {"query": "...", "k": 6, "mode": "hybrid"}  -> ranked chunks (no LLM)
+    GET  /documents -> the indexed documents and their sections
     GET  /health
     GET  /         -> a small demo UI
 """
@@ -27,6 +28,7 @@ UI_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     k: int | None = Field(default=None, ge=1, le=20)
+    mode: str | None = None
 
 
 class SearchRequest(BaseModel):
@@ -76,11 +78,23 @@ def create_app(pipeline: RAGPipeline | None = None) -> FastAPI:
     # Sync handlers run in FastAPI's threadpool, so a slow model call never blocks the loop.
     @app.post("/ask")
     def ask(req: AskRequest) -> dict:
+        if req.mode is not None and req.mode not in MODES:
+            raise HTTPException(status_code=422, detail=f"mode must be one of {MODES}")
         p: RAGPipeline = app.state.pipeline
         try:
-            return p.ask(req.question, k=req.k).to_dict()
+            return p.ask(req.question, k=req.k, mode=req.mode).to_dict()
         except Exception as e:  # surface upstream model errors as 502, not 500
             raise HTTPException(status_code=502, detail=f"Generation failed: {e}") from e
+
+    @app.get("/documents")
+    def documents() -> dict:
+        p: RAGPipeline = app.state.pipeline
+        docs: dict[str, dict] = {}
+        for c in p.retriever.chunks:
+            d = docs.setdefault(c.doc_id, {"doc_id": c.doc_id, "title": c.title, "sections": []})
+            if c.section and c.section != c.title and c.section not in d["sections"]:
+                d["sections"].append(c.section)
+        return {"documents": list(docs.values())}
 
     @app.post("/search")
     def search(req: SearchRequest) -> dict:

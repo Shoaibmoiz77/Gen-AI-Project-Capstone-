@@ -42,7 +42,15 @@ class AskResult:
             ],
             "sources": self.sources(),
             "retrieved": [
-                {"chunk_id": sc.chunk.id, "doc_id": sc.chunk.doc_id, "score": round(sc.score, 5)}
+                {
+                    "chunk_id": sc.chunk.id,
+                    "doc_id": sc.chunk.doc_id,
+                    "title": sc.chunk.title,
+                    "section": sc.chunk.section,
+                    "rank": sc.rank,
+                    "score": round(sc.score, 5),
+                    "cited": sc.chunk.id in self.answer.cited_chunk_ids,
+                }
                 for sc in self.retrieved
             ],
             "timing_ms": {
@@ -72,12 +80,14 @@ class RAGPipeline:
         chunks = load_corpus(src, chunk_chars)
         return cls(HybridRetriever(chunks, get_embedder(embedder)), llm, **kw)
 
-    def retrieve(self, question: str, k: int | None = None) -> list[ScoredChunk]:
-        return self.retriever.search(question, k=k or self.top_k, mode=self.mode)
+    def retrieve(
+        self, question: str, k: int | None = None, mode: str | None = None
+    ) -> list[ScoredChunk]:
+        return self.retriever.search(question, k=k or self.top_k, mode=mode or self.mode)
 
-    def ask(self, question: str, k: int | None = None) -> AskResult:
+    def ask(self, question: str, k: int | None = None, mode: str | None = None) -> AskResult:
         t0 = time.perf_counter()
-        retrieved = self.retrieve(question, k)
+        retrieved = self.retrieve(question, k, mode)
         t1 = time.perf_counter()
         answer = generate_answer(self.llm, question, retrieved)
         t2 = time.perf_counter()
