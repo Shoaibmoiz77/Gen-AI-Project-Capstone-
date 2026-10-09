@@ -40,27 +40,31 @@ jobs:
           path: reports/ci/
 
   live-eval:
-    # Full eval with Claude + LLM judge. Runs on main only, when the secret is configured.
+    # Full eval with a real model + LLM judge. Runs on main only, when a key secret is set.
+    # Uses ANTHROPIC_API_KEY if present, otherwise GROQ_API_KEY / GEMINI_API_KEY.
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main'
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.GROQ_API_KEY != '' || secrets.GEMINI_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
-        if: env.ANTHROPIC_API_KEY != ''
+        if: env.HAS_KEY == 'true'
       - uses: actions/setup-python@v5
-        if: env.ANTHROPIC_API_KEY != ''
+        if: env.HAS_KEY == 'true'
         with:
           python-version: "3.12"
           cache: pip
-      - if: env.ANTHROPIC_API_KEY != ''
+      - if: env.HAS_KEY == 'true'
         run: |
           pip install -e .
           groundwork ingest
-          groundwork eval --llm anthropic --out reports/live
+          groundwork eval --out reports/live
       - uses: actions/upload-artifact@v4
-        if: env.ANTHROPIC_API_KEY != ''
+        if: env.HAS_KEY == 'true'
         with:
           name: live-eval-report
           path: reports/live/

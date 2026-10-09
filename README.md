@@ -31,7 +31,8 @@ emailing security@northwind.example. [1] The device will then be remotely wiped.
 | **Evaluation harness** | Recall@k, MRR, citation precision, unsupported-sentence rate, LLM-as-judge faithfulness and correctness, latency, token usage |
 | **Retrieval ablation** | BM25 vs dense vs hybrid on the same questions, on every run |
 | **CI quality gate** | GitHub Actions fails the build if retrieval recall drops below a threshold, with no API key needed |
-| **Production shape** | FastAPI service, demo UI, Docker image, typed config, 28 tests that run offline |
+| **Provider-agnostic** | Claude via the Anthropic SDK, or any OpenAI-compatible API: Groq and Gemini (free tiers) and Ollama (local), with retry and backoff for rate limits |
+| **Production shape** | FastAPI service, demo UI, Docker image, typed config, 34 tests that run offline |
 
 ## Architecture
 
@@ -59,17 +60,31 @@ cd Gen-AI-Project-Capstone-
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-cp .env.example .env            # add your ANTHROPIC_API_KEY
-export $(grep -v '^#' .env | xargs)
+export ANTHROPIC_API_KEY=sk-ant-...   # or a free key: GROQ_API_KEY / GEMINI_API_KEY
 
 groundwork ingest                                  # index data/corpus
 groundwork ask "What's the hotel limit in London?" # cited answer in the terminal
 groundwork serve                                   # API + demo UI at http://127.0.0.1:8000
 ```
 
-**No API key?** Everything still runs. Without `ANTHROPIC_API_KEY` the system falls back to a
-deterministic extractive baseline (`FakeLLM`), so you can explore retrieval, the API, the UI and
-the eval harness offline. `pytest` never touches the network.
+### Choosing a model provider
+
+The provider is picked automatically from whichever key is set, or explicitly with `--llm`:
+
+| `--llm` | Key | Default model | Cost |
+|---|---|---|---|
+| `anthropic` | `ANTHROPIC_API_KEY` | Claude Sonnet | Paid (prepaid credits) |
+| `groq` | `GROQ_API_KEY` ([console.groq.com](https://console.groq.com)) | `llama-3.3-70b-versatile` | Free tier |
+| `gemini` | `GEMINI_API_KEY` ([aistudio.google.com](https://aistudio.google.com)) | `gemini-2.5-flash` | Free tier |
+| `ollama` | none, runs locally ([ollama.com](https://ollama.com)) | `llama3.1` | Free |
+| `fake` | none | extractive baseline | Free, offline |
+
+Override the model with `GROUNDWORK_MODEL`, or point at any other OpenAI-compatible server
+(OpenRouter, vLLM, LM Studio) with `GROUNDWORK_BASE_URL`. Free tiers have low request limits,
+so the eval runs one request at a time for `groq` and `gemini` and retries 429s with backoff.
+
+**No key at all?** Everything still runs on the `fake` extractive baseline, so you can explore
+retrieval, the API, the UI and the eval harness offline. `pytest` never touches the network.
 
 **Docker:**
 
@@ -86,6 +101,7 @@ questions, and 5 **unanswerable** questions that test whether the system invents
 
 ```bash
 make eval           # Claude as generator and judge  -> reports/latest/report.md
+groundwork eval --llm groq --out reports/groq   # free alternative
 make eval-offline   # no API key: extractive baseline -> reports/offline-baseline/report.md
 ```
 
@@ -113,16 +129,16 @@ and cited something irrelevant). The first means fix retrieval; the second means
 **Offline baseline** (extractive `FakeLLM`, hashing embedder). This is the floor any real model
 has to beat. Full report: [`reports/offline-baseline/report.md`](reports/offline-baseline/report.md).
 
-| Metric | Extractive baseline | Claude |
+| Metric | Extractive baseline | LLM |
 |---|---|---|
-| Retrieval recall@6 | 100.0% | *run `make eval`* |
+| Retrieval recall@6 | 100.0% | *run `groundwork eval`* |
 | Retrieval MRR | 0.97 | |
 | Answer rate | 65.5% | |
 | Abstention accuracy | 40.0% | |
 | Citation precision | 94.7% | |
 | Judge correctness (1-5) | 3.58 | |
 
-> Run `make eval` with your API key and paste the Claude column in. The point of the harness is
+> Run `groundwork eval` with an API key and paste the LLM column in. The point of the harness is
 > that the numbers in this README come from a command anyone can rerun.
 
 **Retrieval ablation** (same 29 answerable questions, no LLM):
@@ -158,7 +174,7 @@ src/groundwork/
   bm25.py          Okapi BM25 from scratch
   embeddings.py    hashing / Voyage / fastembed behind one interface
   retrieval.py     hybrid search + RRF + index persistence
-  llm.py           Anthropic client (forced tool calls) + deterministic FakeLLM
+  llm.py           Anthropic + OpenAI-compatible clients (forced tool calls), FakeLLM
   generation.py    prompt, answer schema, citation validation
   pipeline.py      retrieve -> generate
   api.py           FastAPI service + demo UI
@@ -166,7 +182,7 @@ src/groundwork/
   evals/           metrics, LLM judge, runner, report
 data/corpus/       sample documents (fictional company)
 data/eval/         golden question set
-tests/             28 offline tests
+tests/             34 offline tests
 ```
 
 ## Design decisions
