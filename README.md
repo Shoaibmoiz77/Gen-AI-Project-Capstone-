@@ -74,7 +74,7 @@ The provider is picked automatically from whichever key is set, or explicitly wi
 | `--llm` | Key | Default model | Cost |
 |---|---|---|---|
 | `anthropic` | `ANTHROPIC_API_KEY` | Claude Sonnet | Paid (prepaid credits) |
-| `groq` | `GROQ_API_KEY` ([console.groq.com](https://console.groq.com)) | `llama-3.3-70b-versatile` | Free tier |
+| `groq` | `GROQ_API_KEY` ([console.groq.com](https://console.groq.com)) | `openai/gpt-oss-120b` | Free tier |
 | `gemini` | `GEMINI_API_KEY` ([aistudio.google.com](https://aistudio.google.com)) | `gemini-2.5-flash` | Free tier |
 | `ollama` | none, runs locally ([ollama.com](https://ollama.com)) | `llama3.1` | Free |
 | `fake` | none | extractive baseline | Free, offline |
@@ -101,7 +101,7 @@ questions, and 5 **unanswerable** questions that test whether the system invents
 
 ```bash
 make eval           # Claude as generator and judge  -> reports/latest/report.md
-groundwork eval --llm groq --out reports/groq   # free alternative
+groundwork eval --llm groq --out reports/groq   # free alternative (GPT-OSS 120B on Groq)
 make eval-offline   # no API key: extractive baseline -> reports/offline-baseline/report.md
 ```
 
